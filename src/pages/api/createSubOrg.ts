@@ -37,7 +37,7 @@ export default async function createUser(
       defaultOrganizationId: process.env.NEXT_PUBLIC_ORGANIZATION_ID!,
     });
 
-    const apiClient = turnkey.api(); // TODO: rename to apiClient
+    const apiClient = turnkey.apiClient(); // TODO: rename to apiClient
 
     const walletName = `Default ETH Wallet`;
 
@@ -46,17 +46,31 @@ export default async function createUser(
       rootQuorumThreshold: 1,
       rootUsers: [
         {
-          userName: "New user",
+          userName: "New User",
           apiKeys: [],
           authenticators: [
             {
-              authenticatorName: "Passkey",
+              authenticatorName: "Gelato Turnkey PoC",
               challenge: createSubOrgRequest.challenge,
               attestation: createSubOrgRequest.attestation,
             },
           ],
+          oauthProviders: [],
         },
       ],
+      // rootUsers: [
+      //   {
+      //     userName: "New user",
+      //     apiKeys: [],
+      //     authenticators: [
+      //       {
+      //         authenticatorName: "Passkey",
+      //         challenge: createSubOrgRequest.challenge,
+      //         attestation: createSubOrgRequest.attestation,
+      //       },
+      //     ],
+      //   },
+      // ],
       wallet: {
         walletName: walletName,
         accounts: DEFAULT_ETHEREUM_ACCOUNTS,

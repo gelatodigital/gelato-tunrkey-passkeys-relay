@@ -4,10 +4,28 @@ import Image from "next/image";
 import { useForm } from "react-hook-form";
 import axios from "axios";
 import { useState, useEffect } from "react";
-import { createWalletClient, http } from "viem";
-import { sepolia } from "viem/chains";
+import {
+  createPublicClient,
+  createWalletClient,
+  encodeFunctionData,
+  http,
+} from "viem";
+import { baseSepolia, sepolia, arbitrumSepolia } from "viem/chains";
 import styles from "./index.module.css";
 import { TWalletDetails } from "../types";
+import { abi } from "../../abi/counter2771";
+
+//Gelato imports
+import {
+  CallWithERC2771Request,
+  GelatoRelay,
+} from "@gelatonetwork/relay-sdk-viem";
+
+const COUNTER_CONTRACT_ADDRESS = "0x79dBe2Ce05f44195B502c2f160f35fcab9190308";
+const ARBITRUM_SEPOLIA_CONTRACT_ADDRESS =
+  "0xfB1862BD2083DAe03Ae77E64b1B1f6168240D25D";
+const TRUSTED_FORWARDER = "0xd8253782c45a12053594b9deB72d8e8aB2Fca54c";
+const GELATO_API_KEY = ""; // Update as needed
 
 type subOrgFormData = {
   subOrgName: string;
@@ -34,6 +52,8 @@ export default function Home() {
   // Wallet is used as a proxy for logged-in state
   const [wallet, setWallet] = useState<TWalletState>(null);
   const [signedMessage, setSignedMessage] = useState<TSignedMessage>(null);
+  const [counterValue, setCounterValue] = useState<number | null>(null);
+  const [loadingCounter, setLoadingCounter] = useState(false);
 
   const { handleSubmit: subOrgFormSubmit } = useForm<subOrgFormData>();
   const { register: signingFormRegister, handleSubmit: signingFormSubmit } =
@@ -49,6 +69,170 @@ export default function Home() {
       }
     })();
   });
+
+  // // Get the counter value
+  // const fetchCounterValue = async () => {
+  //   if (!wallet) {
+  //     throw new Error("wallet not found");
+  //   }
+
+  //   setLoadingCounter(true);
+  //   // const viemAccount = await createAccount({
+  //   //   client: passkeyClient!,
+  //   //   organizationId: wallet.subOrgId,
+  //   //   signWith: wallet.address,
+  //   //   ethereumAddress: wallet.address,
+  //   // });
+  //   try {
+  //     const publicClient = createPublicClient({
+  //       chain: baseSepolia,
+  //       transport: http(),
+  //     });
+
+  //     // Fetch the counter value
+  //     const counterValue = await publicClient.readContract({
+  //       address: COUNTER_CONTRACT_ADDRESS,
+  //       abi: abi,
+  //       functionName: "contextCounter",
+  //       args: [wallet.address],
+  //     });
+
+  //     setCounterValue(Number(counterValue));
+  //     console.log(`Counter value: ${counterValue}`);
+  //   } catch (e: any) {
+  //     console.error(`Caught error: ${e.toString()}`);
+  //   } finally {
+  //     setLoadingCounter(false);
+  //   }
+  // };
+
+  const fetchCounterValue = async (network: "baseSepolia" | "arbSepolia") => {
+    if (!wallet) {
+      throw new Error("wallet not found");
+    }
+
+    setLoadingCounter(true);
+
+    // Define the chain and contract settings dynamically
+    const networkConfig = {
+      baseSepolia: {
+        chain: baseSepolia,
+        target: COUNTER_CONTRACT_ADDRESS,
+      },
+      arbSepolia: {
+        chain: arbitrumSepolia,
+        target: ARBITRUM_SEPOLIA_CONTRACT_ADDRESS,
+      },
+    };
+
+    const { chain, target } = networkConfig[network];
+
+    try {
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(),
+      });
+
+      // Fetch the counter value
+      const counterValue = await publicClient.readContract({
+        address: target as `0x${string}`, // Cast to the expected type,
+        abi: abi,
+        functionName: "contextCounter",
+        args: [wallet.address],
+      });
+
+      setCounterValue(Number(counterValue));
+      console.log(`Counter value (${network}): ${counterValue}`);
+    } catch (e: any) {
+      console.error(`Caught error: ${e.toString()}`);
+    } finally {
+      setLoadingCounter(false);
+    }
+  };
+
+  const sponsoredCallIncrementCounter = async (
+    network: "baseSepolia" | "arbSepolia"
+  ) => {
+    if (!wallet) {
+      throw new Error("wallet not found");
+    }
+
+    // Define the chain and contract settings dynamically
+    const networkConfig = {
+      baseSepolia: {
+        chain: baseSepolia,
+        target: COUNTER_CONTRACT_ADDRESS,
+        trustedForwarder: TRUSTED_FORWARDER,
+      },
+      arbSepolia: {
+        chain: arbitrumSepolia,
+        target: ARBITRUM_SEPOLIA_CONTRACT_ADDRESS,
+        trustedForwarder: TRUSTED_FORWARDER,
+      },
+    };
+
+    const { chain, target, trustedForwarder } = networkConfig[network];
+
+    // Logic here to increment the counter
+    try {
+      const relay = new GelatoRelay({
+        contract: {
+          relay1BalanceERC2771: trustedForwarder,
+          relayERC2771: "",
+          relayERC2771zkSync: "",
+          relay1BalanceERC2771zkSync: "",
+          relayConcurrentERC2771: "",
+          relay1BalanceConcurrentERC2771: "",
+          relayConcurrentERC2771zkSync: "",
+          relay1BalanceConcurrentERC2771zkSync: "",
+        },
+      });
+
+      // create a local account
+      const viemAccount = await createAccount({
+        client: passkeyClient!,
+        organizationId: wallet.subOrgId,
+        signWith: wallet.address,
+        ethereumAddress: wallet.address,
+      });
+
+      const viemClient = createWalletClient({
+        account: viemAccount,
+        chain: chain,
+        transport: http(),
+      });
+
+      // Encode the increment function
+      const incrementData = encodeFunctionData({
+        abi,
+        functionName: "increment",
+        args: [],
+      });
+
+      // Create the request
+      const relayRequest = {
+        user: wallet.address,
+        chainId: BigInt(await viemClient.getChainId()),
+        target: target,
+        data: incrementData,
+      } as CallWithERC2771Request;
+
+      // Make the request
+      const relayResponse = await relay.sponsoredCallERC2771(
+        relayRequest,
+        viemClient as any,
+        GELATO_API_KEY
+      );
+      console.log(`Transaction submitted! Task ID: ${relayResponse.taskId}`);
+      console.log(
+        `https://relay.gelato.digital/tasks/status/${relayResponse.taskId}`
+      );
+      alert("Transaction submitted! Fetching updated counter value...");
+      await fetchCounterValue(network);
+    } catch (e: any) {
+      console.error(`Caught error: ${e.toString()}`);
+    }
+  };
 
   const signMessage = async (data: signingFormData) => {
     if (!wallet) {
@@ -149,15 +333,26 @@ export default function Home() {
 
   return (
     <main className={styles.main}>
+      <a href="https://turnkey.com" target="_blank" rel="noopener noreferrer">
+        <Image
+          src="/turnkey_image.png"
+          alt="Turnkey Logo"
+          className={styles.turnkeyLogo}
+          width={100}
+          height={24}
+          priority
+        />
+      </a>
+      <span className={styles.logoSeparator}>+</span>
       <a
-        href="https://turnkey.com"
+        href="https://gelato.network"
         target="_blank"
         rel="noopener noreferrer"
       >
         <Image
-          src="/logo.svg"
-          alt="Turnkey Logo"
-          className={styles.turnkeyLogo}
+          src="/Gelato_white_.png"
+          alt="Gelato Logo"
+          className={styles.gelatoLogo}
           width={100}
           height={24}
           priority
@@ -249,10 +444,7 @@ export default function Home() {
               Whoami endpoint.
             </a>
           </p>
-          <form
-            className={styles.form}
-            onSubmit={loginFormSubmit(login)}
-          >
+          <form className={styles.form} onSubmit={loginFormSubmit(login)}>
             <input
               className={styles.button}
               type="submit"
@@ -263,7 +455,7 @@ export default function Home() {
       )}
       {wallet !== null && (
         <div>
-          <h2>Now let&apos;s sign something!</h2>
+          <h2>Check Your Counter Value!</h2>
           <p className={styles.explainer}>
             We&apos;ll use a{" "}
             <a
@@ -273,32 +465,54 @@ export default function Home() {
             >
               Viem custom account
             </a>{" "}
-            to do this, using{" "}
+            to sign your address and fetch your counter value from the{" "}
             <a
-              href="https://www.npmjs.com/package/@turnkey/viem"
+              href="https://etherscan.io/address/0x79dBe2Ce05f44195B502c2f160f35fcab9190308"
               target="_blank"
               rel="noopener noreferrer"
             >
-              @turnkey/viem
+              CounterERC2771 contract
             </a>
-            . You can kill your NextJS server if you want, everything happens on
-            the client-side!
+            . This will demonstrate seamless integration of Viem and Turnkey.
           </p>
-          <form
-            className={styles.form}
-            onSubmit={signingFormSubmit(signMessage)}
-          >
-            <input
-              className={styles.input}
-              {...signingFormRegister("messageToSign")}
-              placeholder="Write something to sign..."
-            />
-            <input
+          <div>
+            <h2>Increment Counter with Gelato Relay</h2>
+            <p className={styles.explainer}>
+              This will use <strong>Gelato Relay</strong> to send a relayed
+              transaction to increment the counter. Your wallet address will
+              sign the transaction, and it will be relayed securely.
+            </p>
+            <button
               className={styles.button}
-              type="submit"
-              value="Sign Message"
-            />
-          </form>
+              onClick={() => sponsoredCallIncrementCounter("baseSepolia")}
+            >
+              Increment Counter (Base Sepolia)
+            </button>
+          </div>
+          <div>
+            <h3>Arbitrum Sepolia</h3>
+            <button
+              className={styles.button}
+              onClick={() => sponsoredCallIncrementCounter("arbSepolia")}
+            >
+              Increment Counter (Arbitrum Sepolia)
+            </button>
+          </div>
+          {counterValue !== null && (
+            <div className={styles.info}>
+              Counter Value: <br />
+              <span className={styles.code}>{counterValue}</span>
+              <br />
+              <br />
+              Wallet Address: <br />
+              <span className={styles.code}>{wallet.address}</span>
+            </div>
+          )}
+          {loadingCounter && (
+            <div className={styles.info}>
+              <span>Loading counter value...</span>
+            </div>
+          )}
         </div>
       )}
     </main>
