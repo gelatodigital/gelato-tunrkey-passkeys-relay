@@ -25,7 +25,7 @@ const COUNTER_CONTRACT_ADDRESS = "0x79dBe2Ce05f44195B502c2f160f35fcab9190308";
 const ARBITRUM_SEPOLIA_CONTRACT_ADDRESS =
   "0xfB1862BD2083DAe03Ae77E64b1B1f6168240D25D";
 const TRUSTED_FORWARDER = "0xd8253782c45a12053594b9deB72d8e8aB2Fca54c";
-const GELATO_API_KEY = ""; // Update as needed
+const GELATO_API_KEY = ""; // Add your Gelato API key here
 
 type subOrgFormData = {
   subOrgName: string;
@@ -69,42 +69,6 @@ export default function Home() {
       }
     })();
   });
-
-  // // Get the counter value
-  // const fetchCounterValue = async () => {
-  //   if (!wallet) {
-  //     throw new Error("wallet not found");
-  //   }
-
-  //   setLoadingCounter(true);
-  //   // const viemAccount = await createAccount({
-  //   //   client: passkeyClient!,
-  //   //   organizationId: wallet.subOrgId,
-  //   //   signWith: wallet.address,
-  //   //   ethereumAddress: wallet.address,
-  //   // });
-  //   try {
-  //     const publicClient = createPublicClient({
-  //       chain: baseSepolia,
-  //       transport: http(),
-  //     });
-
-  //     // Fetch the counter value
-  //     const counterValue = await publicClient.readContract({
-  //       address: COUNTER_CONTRACT_ADDRESS,
-  //       abi: abi,
-  //       functionName: "contextCounter",
-  //       args: [wallet.address],
-  //     });
-
-  //     setCounterValue(Number(counterValue));
-  //     console.log(`Counter value: ${counterValue}`);
-  //   } catch (e: any) {
-  //     console.error(`Caught error: ${e.toString()}`);
-  //   } finally {
-  //     setLoadingCounter(false);
-  //   }
-  // };
 
   const fetchCounterValue = async (network: "baseSepolia" | "arbSepolia") => {
     if (!wallet) {
