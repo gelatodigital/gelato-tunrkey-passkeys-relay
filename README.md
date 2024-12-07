@@ -1,58 +1,158 @@
-# Demo Viem 🤝 Passkeys
+# Turnkey + Gelato Relay Integration Demo
 
-This repo contains a sample application **for demonstration purposes only**, walking through how to create sub-organizations, create private keys, and sign with the [`@turnkey/viem`](https://github.com/tkhq/sdk/tree/main/packages/viem) signer, using passkeys. Please feel free to clone or fork this repo, or file an issue if there are improvements to be made! ❤️
+This project demonstrates the integration of **Turnkey** for wallet management and **Gelato Relay** for gasless transactions using `sponsoredCallERC2771`. The frontend is built with **Next.js** and utilizes **Viem** for blockchain interactions.
 
-<img src="./img/home.png" width="275"/><img src="./img/wallet.png" width="275"/><img src="./img/signature.png" width="275"/>
+---
 
-The flow showcases 3 ways to make requests to Turnkey:
+## Features
 
-- the initial request to create a new [sub-organization](https://docs.turnkey.com/getting-started/sub-organizations) is authenticated in the NextJS backend with an API signature (using `API_PUBLIC_KEY`/`API_PRIVATE_KEY` from your `.env.local` file)
-- the request to log back in is signed on the frontend with your passkey, but it's passed to the NextJS backend as a signed request (the body, stamp, and url are POSTed). This lets the backend submit this request on your behalf, get your sub-organization ID, and fetch details about your wallet (parent organizations have read-only access to their sub-organizations).
-- the request to sign a message is done 100% client-side via a Turnkey Viem signer (see [@turnkey/viem](https://github.com/tkhq/sdk/tree/main/packages/viem)): it's signed with your passkey, and submitted from the browser to the Turnkey API directly.
+- **Turnkey Integration**:
 
-If you want to see a Viem demo with API keys instead of passkeys, head to the example [`with-viem`](https://github.com/tkhq/sdk/tree/main/examples/with-viem). A demo using passkeys with Ethers can be found [here](https://github.com/tkhq/demo-ethers-passkeys). See our [SDK repo](https://github.com/tkhq/sdk) for additional packages and examples.
+  - Create and manage wallets using Turnkey's Passkey API.
+  - Secure login and sub-organization management.
+  - Viem-powered blockchain interactions.
 
-## Getting started
+- **Gelato Relay Integration**:
+  - Gasless transactions via `sponsoredCallERC2771`.
+  - Increment a counter on contracts deployed on **Base Sepolia** and **Arbitrum Sepolia**.
 
-### 1/ Clone or fork this repo
+---
 
-Make sure you have `Node.js` installed locally; we recommend using Node v18+.
+## Prerequisites
 
-```bash
-$ git clone https://github.com/tkhq/demo-viem-passkeys.git
-$ corepack enable  # Install `pnpm`
-$ pnpm install # Install dependencies
-$ pnpm run build  # Compile source code
+1. **Node.js**: Install [Node.js](https://nodejs.org/) (v16 or later).
+2. **Turnkey API Key**: Obtain from [Turnkey](https://turnkey.com).
+3. **Gelato API Key**: Register and get a key from [Gelato Network](https://gelato.network).
+
+### Environment Variables
+
+Fill out the `.env` file with the required keys.
+
+---
+
+## Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/gelatodigital/gelato-tunrkey-passkeys-relay.git
+   cd gelato-tunrkey-passkeys-relay
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   pnpm install
+   ```
+
+3. Start the development server:
+   ```bash
+   pnpm run dev
+   ```
+
+---
+
+## Usage
+
+### Wallet Management with Turnkey
+
+1. Create a wallet:
+
+   - Click **Create New Wallet** on the homepage.
+   - A wallet will be created under a Turnkey Sub-Organization.
+
+2. Login:
+   - Click **Login to sub-org with existing passkey** to log in with an existing wallet.
+
+---
+
+### Counter Contract Interaction
+
+#### Fetch Counter Value
+
+```typescript
+const fetchCounterValue = async (network: "baseSepolia" | "arbSepolia") => {
+  const publicClient = createPublicClient({
+    chain: network === "baseSepolia" ? baseSepolia : arbitrumSepolia,
+    transport: http(),
+  });
+
+  const counterValue = await publicClient.readContract({
+    address:
+      network === "baseSepolia"
+        ? COUNTER_CONTRACT_ADDRESS
+        : ARBITRUM_SEPOLIA_CONTRACT_ADDRESS,
+    abi,
+    functionName: "contextCounter",
+    args: [wallet.address],
+  });
+
+  setCounterValue(Number(counterValue));
+};
 ```
 
-### 2/ Setting up Turnkey
+#### Increment Counter with Gelato Relay
 
-The first step is to set up your Turnkey organization and account. By following the [Quickstart](https://docs.turnkey.com/getting-started/quickstart) guide, you should have:
+```typescript
+const sponsoredCallIncrementCounter = async (
+  network: "baseSepolia" | "arbSepolia"
+) => {
+  const relay = new GelatoRelay();
+  const incrementData = encodeFunctionData({
+    abi,
+    functionName: "increment",
+    args: [],
+  });
 
-- A public/private API key pair for Turnkey
-- An organization ID
+  const relayRequest = {
+    user: wallet.address,
+    chainId: BigInt(await viemClient.getChainId()),
+    target:
+      network === "baseSepolia"
+        ? COUNTER_CONTRACT_ADDRESS
+        : ARBITRUM_SEPOLIA_CONTRACT_ADDRESS,
+    data: incrementData,
+  };
 
-Once you've gathered these values, add them to a new `.env.local` file. Notice that your API private key should be securely managed and **_never_** be committed to git.
+  const relayResponse = await relay.sponsoredCallERC2771(
+    relayRequest,
+    viemClient,
+    GELATO_API_KEY
+  );
 
-```bash
-$ cp .env.local.example .env.local
+  console.log(`Transaction submitted! Task ID: ${relayResponse.taskId}`);
+};
 ```
 
-Now open `.env.local` and add the missing environment variables:
+### Supported Networks
 
-- `TURNKEY_API_PUBLIC_KEY`
-- `TURNKEY_API_PRIVATE_KEY`
-- `NEXT_PUBLIC_TURNKEY_API_BASE_URL`
-- `NEXT_PUBLIC_ORGANIZATION_ID`
+- Base Sepolia
+- Arbitrum Sepolia
 
-### 3/ Running the app
+---
 
-```bash
-$ pnpm run dev
-```
+## Deployment
 
-This command will start a NextJS app on localhost. If you navigate to http://localhost:3000 in your browser, you can follow the prompts to create a sub organization, create a private key for the newly created sub-organization, and sign a message using your passkey with a Viem custom account!
+1. Build the project:
 
-# Legal Disclaimer
+   ```bash
+   pnpm run build
+   ```
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL TURNKEY BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+2. Deploy the project:
+   ```bash
+   pnpm run start
+   ```
+
+---
+
+## Learn More
+
+- [Turnkey Documentation](https://docs.turnkey.com)
+- [Gelato Relay Documentation](https://docs.gelato.network)
+
+---
+
+## Contributions
+
+Feel free to open issues or create pull requests for suggestions and improvements!
